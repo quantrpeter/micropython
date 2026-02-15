@@ -53,7 +53,9 @@
 // Polling mode will also cause failures with the mass-erase command because USB
 // events will not be serviced for the duration of the mass erase.
 // With STM32WB MCUs only non-polling/IRQ mode is supported.
+#ifndef USE_USB_POLLING
 #define USE_USB_POLLING (0)
+#endif
 
 // Using cache probably won't make it faster because we run at a low frequency, and best
 // to keep the MCU config as minimal as possible.
@@ -1026,6 +1028,7 @@ static int dfu_handle_tx(int cmd, int arg, int len, uint8_t *buf, int max_len) {
         }
     } else if (cmd == DFU_GETSTATUS && len == 6) {
         // execute command and get status
+        uint32_t poll_timeout_ms = 0;
         switch (dfu_context.cmd) {
             case DFU_CMD_NONE:
                 break;
@@ -1037,14 +1040,30 @@ static int dfu_handle_tx(int cmd, int arg, int len, uint8_t *buf, int max_len) {
                 break;
             case DFU_CMD_DNLOAD:
                 dfu_context.state = DFU_STATE_BUSY;
+                // We will execute the DNLOAD (erase/write) after this GETSTATUS reply is sent.
+                // While busy the device may not respond to further USB requests, so provide a
+                // non-zero bwPollTimeout so the host waits before polling again.
+                if (dfu_context.wBlockNum == 0 && dfu_context.wLength >= 1) {
+                    if (dfu_context.buf[0] == DFU_CMD_DNLOAD_ERASE) {
+                        // QSPI sector erase can take 100s of ms; be conservative.
+                        poll_timeout_ms = 500;
+                    } else {
+                        // SET_ADDRESS etc.
+                        poll_timeout_ms = 10;
+                    }
+                } else {
+                    // Data writes (flash/QSPI programming).
+                    poll_timeout_ms = 20;
+                }
                 break;
             default:
                 dfu_context.state = DFU_STATE_BUSY;
+                poll_timeout_ms = 20;
         }
         buf[0] = dfu_context.status;          // bStatus
-        buf[1] = 0;                           // bwPollTimeout_lsb (ms)
-        buf[2] = 0;                           // bwPollTimeout     (ms)
-        buf[3] = 0;                           // bwPollTimeout_msb (ms)
+        buf[1] = poll_timeout_ms & 0xff;            // bwPollTimeout_lsb (ms)
+        buf[2] = (poll_timeout_ms >> 8) & 0xff;     // bwPollTimeout     (ms)
+        buf[3] = (poll_timeout_ms >> 16) & 0xff;    // bwPollTimeout_msb (ms)
         buf[4] = dfu_context.state;           // bState
         buf[5] = dfu_context.error;           // iString
         // Clear errors now they've been sent
