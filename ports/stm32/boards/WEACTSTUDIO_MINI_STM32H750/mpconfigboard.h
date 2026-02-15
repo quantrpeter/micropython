@@ -14,8 +14,6 @@
 #define MICROPY_HW_ENABLE_SDCARD            (1)
 #define MICROPY_HW_ENABLE_MMCARD            (0)
 
-// This board runs code from external QSPI flash via XIP.
-#define MICROPY_HW_RUNS_FROM_EXT_FLASH      (1)
 
 // ROMFS config
 #define MICROPY_HW_ROMFS_ENABLE_EXTERNAL_QSPI   (1)
@@ -49,8 +47,8 @@ extern struct _spi_bdev_t spi_bdev;
 #define MICROPY_HW_BDEV_SPIFLASH_EXTENDED   (&spi_bdev) // for extended block protocol
 #define MICROPY_HW_SPIFLASH_SIZE_BITS       (MICROPY_HW_SPIFLASH_SIZE_BYTES * 8)
 
-// SPI flash #2, to be memory mapped (QSPI)
-#define MICROPY_HW_QSPI_PRESCALER           (3) // 80 MHz (AHB3=240MHz, W25Q64 max 104MHz)
+// SPI flash #2, to be memory mapped
+#define MICROPY_HW_QSPI_PRESCALER           (2) // 120 MHz
 #define MICROPY_HW_QSPIFLASH_SIZE_BITS_LOG2 (26)
 #define MICROPY_HW_QSPIFLASH_CS             (pin_B6)
 #define MICROPY_HW_QSPIFLASH_SCK            (pin_B2)
@@ -63,9 +61,7 @@ extern struct _spi_bdev_t spi_bdev;
 extern const struct _mp_spiflash_config_t spiflash2_config;
 extern struct _spi_bdev_t spi_bdev2;
 
-// Board startup: initialize QSPI memory-mapped mode for XIP before other code runs.
-#define MICROPY_BOARD_STARTUP               WeAct_H750_startup
-#define MICROPY_BOARD_EARLY_INIT            WeAct_H750_early_init
+#define MICROPY_BOARD_EARLY_INIT            WeAct_Core_early_init
 
 // This board has 25MHz HSE.
 // The following gives a 480MHz CPU speed.
@@ -173,30 +169,4 @@ extern struct _spi_bdev_t spi_bdev2;
 // USB config
 #define MICROPY_HW_USB_FS                   (1)
 
-// Mboot configuration for programming external QSPI flash via DFU.
-// The QSPI flash is at 0x90000000 and holds the XIP firmware + ROMFS.
-#define MBOOT_SPIFLASH2_ADDR                (0x90000000)
-#define MBOOT_SPIFLASH2_BYTE_SIZE           (8 * 1024 * 1024)
-// Use 4K erase pages for DFU operations to keep each ERASE_PAGE command short.
-#define MBOOT_SPIFLASH2_LAYOUT              "/0x90000000/2048*4Kg"
-#define MBOOT_SPIFLASH2_ERASE_BLOCKS_PER_PAGE (1)
-#define MBOOT_SPIFLASH2_SPIFLASH            (&spi_bdev2.spiflash)
-#define MBOOT_SPIFLASH2_CONFIG              (&spiflash2_config)
-
-// Direct bootloader entry pin: hold K1 during reset to enter mboot DFU.
-#define MBOOT_BOOTPIN_PIN                   MICROPY_HW_USRSW_PIN
-#define MBOOT_BOOTPIN_PULL                  MICROPY_HW_USRSW_PULL
-#define MBOOT_BOOTPIN_ACTIVE                MICROPY_HW_USRSW_PRESSED
-
-#if BUILDING_MBOOT
-// mboot does long QSPI erase/write operations; do them from the main loop
-// (USB polling) instead of EP0 interrupt context to avoid host timeouts.
-#define USE_USB_POLLING                     (1)
-#endif
-
-#define MBOOT_BOARD_EARLY_INIT(initial_r0)  WeAct_H750_mboot_early_init()
-
-void WeAct_H750_startup(void);
-void WeAct_H750_early_init(void);
-void WeAct_H750_mboot_early_init(void);
-
+void WeAct_Core_early_init(void);

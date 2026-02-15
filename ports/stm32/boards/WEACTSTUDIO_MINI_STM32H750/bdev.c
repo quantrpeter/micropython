@@ -6,12 +6,42 @@
 #include "storage.h"
 #include "qspi.h"
 
-#if !BUILDING_MBOOT
+#if BUILDING_MBOOT
 
-// The first external SPI flash (W25Q64 on SPI1) is only used by the main
-// firmware for R/W storage, not by mboot.
+// Mboot uses software SPI for the first flash
+#include "drivers/bus/spi.h"
+
+static const mp_soft_spi_obj_t soft_spi_bus = {
+    .delay_half = MICROPY_HW_SOFTSPI_MIN_DELAY,
+    .polarity = 0,
+    .phase = 0,
+    .sck = MICROPY_HW_SPIFLASH_SCK,
+    .mosi = MICROPY_HW_SPIFLASH_MOSI,
+    .miso = MICROPY_HW_SPIFLASH_MISO,
+};
+
+const mp_spiflash_config_t spiflash_config = {
+    .bus_kind = MP_SPIFLASH_BUS_SPI,
+    .bus.u_spi.cs = MICROPY_HW_SPIFLASH_CS,
+    .bus.u_spi.data = (void *)&soft_spi_bus,
+    .bus.u_spi.proto = &mp_soft_spi_proto,
+};
+
+spi_bdev_t spi_bdev;
+
+// Second external SPI flash uses hardware QSPI interface
+const mp_spiflash_config_t spiflash2_config = {
+    .bus_kind = MP_SPIFLASH_BUS_QSPI,
+    .bus.u_qspi.data = NULL,
+    .bus.u_qspi.proto = &qspi_proto,
+};
+
+spi_bdev_t spi_bdev2;
+
+#else
+
+// Normal build uses hardware SPI
 #include "spi.h"
-#include "py/mpconfig.h"
 
 static const spi_proto_cfg_t spi_bus = {
     .spi = &spi_obj[0], // SPI1
@@ -29,7 +59,6 @@ static mp_spiflash_cache_t spi_bdev_cache;
 const mp_spiflash_config_t spiflash_config = {
     .bus_kind = MP_SPIFLASH_BUS_SPI,
     .bus.u_spi.cs = MICROPY_HW_SPIFLASH_CS,
-
     .bus.u_spi.data = (void *)&spi_bus,
     .bus.u_spi.proto = &spi_proto,
     #if MICROPY_HW_SPIFLASH_ENABLE_CACHE
@@ -39,17 +68,17 @@ const mp_spiflash_config_t spiflash_config = {
 
 spi_bdev_t spi_bdev;
 
-#endif // !BUILDING_MBOOT
-
-// Second external SPI flash uses hardware QSPI interface.
-// This is used by both mboot (for programming) and the main firmware (for XIP and ROMFS).
+// Second external SPI flash uses hardware QSPI interface
 const mp_spiflash_config_t spiflash2_config = {
     .bus_kind = MP_SPIFLASH_BUS_QSPI,
     .bus.u_qspi.data = NULL,
     .bus.u_qspi.proto = &qspi_proto,
-    #if !BUILDING_MBOOT && MICROPY_HW_SPIFLASH_ENABLE_CACHE
+    #if MICROPY_HW_SPIFLASH_ENABLE_CACHE
     .cache = &spi_bdev_cache,
     #endif
 };
 
 spi_bdev_t spi_bdev2;
+
+#endif
+ 
